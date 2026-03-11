@@ -12,9 +12,22 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useCallback } = React;
+const { useState, useCallback, useEffect } = React;
 
-// ─── Constants ─────────────────────────────────────────────────────────────
+// âââ Constants âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+// localStorage Persistence
+const STORAGE_KEY = "nurseSchedulerPro_data";
+function saveToStorage(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) { console.warn("Save failed", e); }
+}
+function loadFromStorage() {
+  try { const d = localStorage.getItem(STORAGE_KEY); return d ? JSON.parse(d) : null; } catch(e) { return null; }
+}
+function clearStorage() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+}
+
 const SHIFT_TYPES = [
   { id: "morning", name: "Morning (8h)", start: "07:00", end: "15:00", hours: 8, color: "#FEF3C7", text: "#92400E", icon: "\u2600\uFE0F", isSplit: false, group: "8hr" },
   { id: "afternoon", name: "Afternoon (8h)", start: "15:00", end: "23:00", hours: 8, color: "#DBEAFE", text: "#1E40AF", icon: "\uD83C\uDF24\uFE0F", isSplit: false, group: "8hr" },
@@ -39,7 +52,7 @@ function addD(date, days) { const d = new Date(date); d.setDate(d.getDate() + da
 function fmt(date) { return date.toISOString().split("T")[0]; }
 function fmtShort(date) { return date.toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
 
-// ─── Schedule Generator ────────────────────────────────────────────────────
+// âââ Schedule Generator ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function generateSchedule(nurseCount, startDate, totalDays, minPerShift, maxNights, leaveMap, shiftMode) {
   const nurses = [];
   for (let i = 0; i < nurseCount; i++) nurses.push({ id: i, code: genCode(i) });
@@ -122,7 +135,7 @@ function generateSchedule(nurseCount, startDate, totalDays, minPerShift, maxNigh
   return { schedule, counts, nurses, shiftMode };
 }
 
-// ─── Verification Engine ───────────────────────────────────────────────────
+// âââ Verification Engine âââââââââââââââââââââââââââââââââââââââââââââââââââ
 function verifySchedule(schedule, totalDays, startDate, minPerShift, nurseCount, shiftMode) {
   const results = { passed: 0, failed: 0, warnings: 0, checks: [] };
   const dates = [];
@@ -264,7 +277,7 @@ function verifySchedule(schedule, totalDays, startDate, minPerShift, nurseCount,
   return results;
 }
 
-// ─── CSV Export ─────────────────────────────────────────────────────────────
+// âââ CSV Export âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function makeCSV(schedule, nurses, startDate, totalDays) {
   const dates = [];
   for (let i = 0; i < totalDays; i++) dates.push(addD(startDate, i));
@@ -313,7 +326,7 @@ function dlCSV(csv, name) {
   URL.revokeObjectURL(u);
 }
 
-// ─── UI Styles ──────────────────────────────────────────────────────────────
+// âââ UI Styles ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const S = {
   card: { background: "#fff", borderRadius: "12px", border: "1px solid #E5E7EB", overflow: "hidden", marginBottom: "16px" },
   cardHead: { padding: "14px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", justifyContent: "space-between", alignItems: "center" },
@@ -372,7 +385,7 @@ function Verification({ results }) {
   );
 }
 
-// ─── Main App ───────────────────────────────────────────────────────────────
+// âââ Main App âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function NurseSchedulerPro() {
   const [tab, setTab] = useState("setup");
   const [nurseCount, setNurseCount] = useState(12);
@@ -389,6 +402,7 @@ function NurseSchedulerPro() {
   const [leaveNurse, setLeaveNurse] = useState("");
   const [leaveStart, setLeaveStart] = useState("");
   const [leaveEnd, setLeaveEnd] = useState("");
+  const [savedMsg, setSavedMsg] = useState("");
 
   const totalDays = parseInt(duration);
   const sd = new Date(startDate + "T00:00:00");
@@ -397,6 +411,23 @@ function NurseSchedulerPro() {
     if (shiftMode === "12hr") return s.group === "12hr" || s.group === "split";
     return true;
   });
+
+  useEffect(() => {
+    const saved = loadFromStorage();
+    if (saved) {
+      if (saved.nurseCount) setNurseCount(saved.nurseCount);
+      if (saved.startDate) setStartDate(saved.startDate);
+      if (saved.duration) setDuration(saved.duration);
+      if (saved.minPerShift) setMinPerShift(saved.minPerShift);
+      if (saved.maxNights) setMaxNights(saved.maxNights);
+      if (saved.shiftMode) setShiftMode(saved.shiftMode);
+      if (saved.leaveEntries) setLeaveEntries(saved.leaveEntries);
+      if (saved.data) setData(saved.data);
+      if (saved.verification) setVerification(saved.verification);
+      setSavedMsg("Previous schedule loaded");
+      setTimeout(() => setSavedMsg(""), 3000);
+    }
+  }, []);
 
   const handleGenerate = useCallback(() => {
     const leaveMap = {};
@@ -412,6 +443,9 @@ function NurseSchedulerPro() {
     setVerification(v);
     setWeekOffset(0);
     setTab("verify");
+    saveToStorage({ data: result, verification: v, nurseCount, startDate, duration, minPerShift, maxNights, shiftMode, leaveEntries });
+    setSavedMsg("Schedule saved!");
+    setTimeout(() => setSavedMsg(""), 3000);
   }, [nurseCount, startDate, duration, minPerShift, maxNights, leaveEntries, shiftMode]);
 
   const addLeave = () => {
@@ -419,6 +453,8 @@ function NurseSchedulerPro() {
     setLeaveEntries([...leaveEntries, { nurseIdx: parseInt(leaveNurse), code: genCode(parseInt(leaveNurse)), start: leaveStart, end: leaveEnd }]);
     setLeaveNurse(""); setLeaveStart(""); setLeaveEnd("");
   };
+
+  const handleClearSaved = () => { clearStorage(); setSavedMsg("Saved data cleared"); setTimeout(() => setSavedMsg(""), 3000); };
 
   const tabs = [
     { id: "setup", label: "Setup & Generate", icon: "\u2699\uFE0F" },
@@ -447,6 +483,8 @@ function NurseSchedulerPro() {
             {data && <span style={S.badge("rgba(255,255,255,0.2)", "#fff")}>{duration} Days</span>}
             {data && <span style={S.badge("rgba(255,255,255,0.2)", "#fff")}>{shiftMode === "12hr" ? "12hr Shifts" : shiftMode === "mix" ? "Mixed" : "8hr Shifts"}</span>}
             {verification && <span style={S.badge(verification.failed === 0 ? "#34D399" : "#F87171", "#fff")}>{verification.failed === 0 ? "Verified \u2713" : "Issues Found"}</span>}
+            {savedMsg && <span style={S.badge("#FCD34D", "#92400E")}>{savedMsg}</span>}
+            {data && <button onClick={handleClearSaved} style={{ padding: "4px 10px", fontSize: "11px", background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", borderRadius: "6px", cursor: "pointer" }}>Clear Saved</button>}
           </div>
         </div>
       </div>
@@ -466,7 +504,7 @@ function NurseSchedulerPro() {
 
       <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "20px 24px" }}>
 
-        {/* ── SETUP TAB ─── */}
+        {/* ââ SETUP TAB âââ */}
         {tab === "setup" && (
           <>
             <div style={S.card}>
@@ -527,7 +565,7 @@ function NurseSchedulerPro() {
 
             {/* Shift types display */}
             <div style={S.card}>
-              <div style={S.cardHead}><h3 style={S.h3}>Shift Structure (24-Hour Coverage) \u2014 {shiftMode === "12hr" ? "12-Hour Mode" : shiftMode === "mix" ? "Mixed Mode" : "8-Hour Mode"}</h3></div>
+              <div style={S.cardHead}><h3 style={S.h3}>Shift Structure (24-Hour Coverage) {"\u2014"} {shiftMode === "12hr" ? "12-Hour Mode" : shiftMode === "mix" ? "Mixed Mode" : "8-Hour Mode"}</h3></div>
               <div style={S.cardBody}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px" }}>
                   {activeShifts.map((s) => (
@@ -607,7 +645,7 @@ function NurseSchedulerPro() {
           </>
         )}
 
-        {/* ── VERIFICATION TAB ── */}
+        {/* ââ VERIFICATION TAB ââ */}
         {tab === "verify" && (
           verification ? <Verification results={verification} /> : (
             <div style={{ textAlign: "center", padding: "60px", color: "#9CA3AF" }}>
@@ -617,7 +655,7 @@ function NurseSchedulerPro() {
           )
         )}
 
-        {/* ── SCHEDULE TAB ── */}
+        {/* ââ SCHEDULE TAB ââ */}
         {tab === "schedule" && (
           data ? (
             <>
@@ -722,7 +760,7 @@ function NurseSchedulerPro() {
           )
         )}
 
-        {/* ── DISTRIBUTION TAB ── */}
+        {/* ââ DISTRIBUTION TAB ââ */}
         {tab === "distribution" && data && (
           <>
             <div style={S.card}>
@@ -783,7 +821,7 @@ function NurseSchedulerPro() {
           </>
         )}
 
-        {/* ── EXPORT TAB ── */}
+        {/* ââ EXPORT TAB ââ */}
         {tab === "export" && (
           data ? (
             <div style={S.card}>
@@ -858,3 +896,4 @@ ReactDOM.render(<NurseSchedulerPro />, document.getElementById("root"));
 </script>
 </body>
 </html>
+
