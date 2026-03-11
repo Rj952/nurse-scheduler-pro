@@ -14,7 +14,7 @@
 <script type="text/babel">
 const { useState, useCallback, useEffect } = React;
 
-// âââ Constants âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ Constants Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 
 // localStorage Persistence
 const STORAGE_KEY = "nurseSchedulerPro_data";
@@ -52,10 +52,10 @@ function addD(date, days) { const d = new Date(date); d.setDate(d.getDate() + da
 function fmt(date) { return date.toISOString().split("T")[0]; }
 function fmtShort(date) { return date.toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
 
-// âââ Schedule Generator ââââââââââââââââââââââââââââââââââââââââââââââââââââ
-function generateSchedule(nurseCount, startDate, totalDays, minPerShift, maxNights, leaveMap, shiftMode) {
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ Schedule Generator Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+function generateSchedule(nurseCount, startDate, totalDays, minPerShift, maxNights, leaveMap, shiftMode, weekendMin, shiftsPerWeek, nursePrefs) {
   const nurses = [];
-  for (let i = 0; i < nurseCount; i++) nurses.push({ id: i, code: genCode(i) });
+  for (let i = 0; i < nurseCount; i++) nurses.push({ id: i, code: genCode(i), pref: nursePrefs[i] || "any" });
 
   const coreShifts = shiftMode === "12hr" ? CORE_12 : shiftMode === "mix" ? [...CORE_8, ...CORE_12] : CORE_8;
   const shiftHours = (sid) => SHIFT_TYPES.find((s) => s.id === sid)?.hours || 8;
@@ -72,6 +72,10 @@ function generateSchedule(nurseCount, startDate, totalDays, minPerShift, maxNigh
     consecNights[n.id] = 0;
   });
 
+  const weeklyShifts = {};
+  nurses.forEach((n) => { weeklyShifts[n.id] = 0; });
+
+  const isDayShift = (sid) => sid === "morning" || sid === "afternoon" || sid === "day12";
   const isLeave = (nurseId, dateStr) => leaveMap[nurseId]?.has(dateStr) || false;
 
   for (let day = 0; day < totalDays; day++) {
@@ -81,8 +85,21 @@ function generateSchedule(nurseCount, startDate, totalDays, minPerShift, maxNigh
     schedule[ds] = {};
     const usedToday = new Set();
 
+    // Reset weekly shift counts at start of each week (every 7 days)
+    if (day > 0 && day % 7 === 0) {
+      nurses.forEach((n) => { weeklyShifts[n.id] = 0; });
+    }
+
     for (const sid of coreShifts) {
-      const avail = nurses.filter((n) => !isLeave(n.id, ds) && !usedToday.has(n.id));
+      const avail = nurses.filter((n) => {
+        if (isLeave(n.id, ds) || usedToday.has(n.id)) return false;
+        // Enforce nurse shift preferences
+        if (n.pref === "day" && isNightShift(sid)) return false;
+        if (n.pref === "night" && isDayShift(sid)) return false;
+        // Enforce weekly shift limit for 12hr mode
+        if (shiftMode === "12hr" && shiftsPerWeek > 0 && weeklyShifts[n.id] >= shiftsPerWeek) return false;
+        return true;
+      });
       avail.sort((a, b) => {
         if (counts[a.id].total !== counts[b.id].total) return counts[a.id].total - counts[b.id].total;
         if ((counts[a.id][sid]||0) !== (counts[b.id][sid]||0)) return (counts[a.id][sid]||0) - (counts[b.id][sid]||0);
@@ -94,7 +111,8 @@ function generateSchedule(nurseCount, startDate, totalDays, minPerShift, maxNigh
         return Math.random() - 0.5;
       });
 
-      const needed = shiftMode === "mix" ? Math.max(1, Math.floor(minPerShift / 2)) : minPerShift;
+      const effectiveMin = isWknd ? Math.min(weekendMin || minPerShift, minPerShift) : minPerShift;
+      const needed = shiftMode === "mix" ? Math.max(1, Math.floor(effectiveMin / 2)) : effectiveMin;
       const assigned = [];
       for (const n of avail) {
         if (assigned.length >= needed) break;
@@ -105,11 +123,12 @@ function generateSchedule(nurseCount, startDate, totalDays, minPerShift, maxNigh
         counts[n.id].total++;
         counts[n.id].hours += shiftHours(sid);
         if (isWknd) counts[n.id].weekends++;
+        weeklyShifts[n.id]++;
       }
       schedule[ds][sid] = assigned;
     }
 
-    const remaining = nurses.filter((n) => !usedToday.has(n.id) && !isLeave(n.id, ds));
+    const remaining = nurses.filter((n) => !usedToday.has(n.id) && !isLeave(n.id, ds) && !(shiftMode === "12hr" && shiftsPerWeek > 0 && weeklyShifts[n.id] >= shiftsPerWeek));
     remaining.sort((a, b) => counts[a.id].total - counts[b.id].total);
     let ri = 0;
     for (const sid of ["split_a", "split_b"]) {
@@ -132,11 +151,12 @@ function generateSchedule(nurseCount, startDate, totalDays, minPerShift, maxNigh
     });
   }
 
-  return { schedule, counts, nurses, shiftMode };
+  const nursesWithPrefs = nurses.map(n => ({...n, pref: n.pref || 'any'}));
+  return { schedule, counts, nurses: nursesWithPrefs, shiftMode, weekendMin, shiftsPerWeek };
 }
 
-// âââ Verification Engine âââââââââââââââââââââââââââââââââââââââââââââââââââ
-function verifySchedule(schedule, totalDays, startDate, minPerShift, nurseCount, shiftMode) {
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ Verification Engine Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+function verifySchedule(schedule, totalDays, startDate, minPerShift, nurseCount, shiftMode, weekendMin) {
   const results = { passed: 0, failed: 0, warnings: 0, checks: [] };
   const dates = [];
   for (let i = 0; i < totalDays; i++) dates.push(addD(startDate, i));
@@ -172,10 +192,12 @@ function verifySchedule(schedule, totalDays, startDate, minPerShift, nurseCount,
   }
 
   let understaffed = [];
-  const checkMin = shiftMode === "mix" ? Math.max(1, Math.floor(minPerShift / 2)) : minPerShift;
   dates.forEach((d) => {
     const ds = fmt(d);
     const day = schedule[ds] || {};
+    const isW = d.getDay() === 0 || d.getDay() === 6;
+    const effMin = isW ? Math.min(weekendMin || minPerShift, minPerShift) : minPerShift;
+    const checkMin = shiftMode === "mix" ? Math.max(1, Math.floor(effMin / 2)) : effMin;
     for (const sid of coreShifts) {
       const count = (day[sid] || []).length;
       if (count < checkMin) understaffed.push({ date: ds, shift: sid, have: count, need: checkMin });
@@ -277,7 +299,7 @@ function verifySchedule(schedule, totalDays, startDate, minPerShift, nurseCount,
   return results;
 }
 
-// âââ CSV Export âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ CSV Export Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 function makeCSV(schedule, nurses, startDate, totalDays) {
   const dates = [];
   for (let i = 0; i < totalDays; i++) dates.push(addD(startDate, i));
@@ -326,7 +348,7 @@ function dlCSV(csv, name) {
   URL.revokeObjectURL(u);
 }
 
-// âââ UI Styles ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ UI Styles Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 const S = {
   card: { background: "#fff", borderRadius: "12px", border: "1px solid #E5E7EB", overflow: "hidden", marginBottom: "16px" },
   cardHead: { padding: "14px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", justifyContent: "space-between", alignItems: "center" },
@@ -385,14 +407,17 @@ function Verification({ results }) {
   );
 }
 
-// âââ Main App âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ Main App Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 function NurseSchedulerPro() {
   const [tab, setTab] = useState("setup");
-  const [nurseCount, setNurseCount] = useState(12);
+  const [nurseCount, setNurseCount] = useState(20);
   const [startDate, setStartDate] = useState(fmt(new Date()));
   const [duration, setDuration] = useState("28");
   const [minPerShift, setMinPerShift] = useState(2);
   const [maxNights, setMaxNights] = useState(3);
+  const [weekendMin, setWeekendMin] = useState(1);
+  const [shiftsPerWeek, setShiftsPerWeek] = useState(3);
+  const [nursePrefs, setNursePrefs] = useState({});
   const [shiftMode, setShiftMode] = useState("8hr");
   const [data, setData] = useState(null);
   const [verification, setVerification] = useState(null);
@@ -422,6 +447,9 @@ function NurseSchedulerPro() {
       if (saved.maxNights) setMaxNights(saved.maxNights);
       if (saved.shiftMode) setShiftMode(saved.shiftMode);
       if (saved.leaveEntries) setLeaveEntries(saved.leaveEntries);
+      if (saved.weekendMin) setWeekendMin(saved.weekendMin);
+      if (saved.shiftsPerWeek) setShiftsPerWeek(saved.shiftsPerWeek);
+      if (saved.nursePrefs) setNursePrefs(saved.nursePrefs);
       if (saved.data) setData(saved.data);
       if (saved.verification) setVerification(saved.verification);
       setSavedMsg("Previous schedule loaded");
@@ -437,16 +465,16 @@ function NurseSchedulerPro() {
       const end = new Date(le.end + "T00:00:00");
       while (d <= end) { leaveMap[le.nurseIdx].add(fmt(d)); d = addD(d, 1); }
     });
-    const result = generateSchedule(nurseCount, sd, totalDays, minPerShift, maxNights, leaveMap, shiftMode);
+    const result = generateSchedule(nurseCount, sd, totalDays, minPerShift, maxNights, leaveMap, shiftMode, weekendMin, shiftsPerWeek, nursePrefs);
     setData(result);
-    const v = verifySchedule(result.schedule, totalDays, sd, minPerShift, nurseCount, shiftMode);
+    const v = verifySchedule(result.schedule, totalDays, sd, minPerShift, nurseCount, shiftMode, weekendMin);
     setVerification(v);
     setWeekOffset(0);
     setTab("verify");
-    saveToStorage({ data: result, verification: v, nurseCount, startDate, duration, minPerShift, maxNights, shiftMode, leaveEntries });
+    saveToStorage({ data: result, verification: v, nurseCount, startDate, duration, minPerShift, maxNights, shiftMode, leaveEntries, weekendMin, shiftsPerWeek, nursePrefs });
     setSavedMsg("Schedule saved!");
     setTimeout(() => setSavedMsg(""), 3000);
-  }, [nurseCount, startDate, duration, minPerShift, maxNights, leaveEntries, shiftMode]);
+  }, [nurseCount, startDate, duration, minPerShift, maxNights, leaveEntries, shiftMode, weekendMin, shiftsPerWeek, nursePrefs]);
 
   const addLeave = () => {
     if (leaveNurse === "" || !leaveStart || !leaveEnd) return;
@@ -504,7 +532,7 @@ function NurseSchedulerPro() {
 
       <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "20px 24px" }}>
 
-        {/* ââ SETUP TAB âââ */}
+        {/* Ã¢ÂÂÃ¢ÂÂ SETUP TAB Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ */}
         {tab === "setup" && (
           <>
             <div style={S.card}>
@@ -513,7 +541,7 @@ function NurseSchedulerPro() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
                   <div>
                     <label style={S.label}>Number of Nurses</label>
-                    <input type="number" min="3" max="200" value={nurseCount} onChange={(e) => setNurseCount(Math.max(1, parseInt(e.target.value) || 1))} style={{ ...S.input, width: "100%", boxSizing: "border-box" }} />
+                    <input type="number" min="3" max="500" value={nurseCount} onChange={(e) => setNurseCount(Math.max(1, parseInt(e.target.value) || 1))} style={{ ...S.input, width: "100%", boxSizing: "border-box" }} />
                     <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "4px" }}>Each nurse auto-assigned a unique code</div>
                   </div>
                   <div>
@@ -537,7 +565,7 @@ function NurseSchedulerPro() {
                   <div>
                     <label style={S.label}>Min Nurses Per Core Shift</label>
                     <select value={minPerShift} onChange={(e) => setMinPerShift(parseInt(e.target.value))} style={{ ...S.input, width: "100%", boxSizing: "border-box" }}>
-                      {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}</option>)}
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20].map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                   </div>
                   <div>
@@ -558,6 +586,20 @@ function NurseSchedulerPro() {
                     <select value={maxNights} onChange={(e) => setMaxNights(parseInt(e.target.value))} style={{ ...S.input, width: "100%", boxSizing: "border-box" }}>
                       {[2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
+                  </div>
+                  <div>
+                    <label style={S.label}>Weekend Min Per Shift</label>
+                    <select value={weekendMin} onChange={(e) => setWeekendMin(parseInt(e.target.value))} style={{ ...S.input, width: "100%", boxSizing: "border-box" }}>
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20].map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                    <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "4px" }}>Lower staffing on Sat/Sun</div>
+                  </div>
+                  <div>
+                    <label style={S.label}>Max Shifts/Week (12hr)</label>
+                    <select value={shiftsPerWeek} onChange={(e) => setShiftsPerWeek(parseInt(e.target.value))} style={{ ...S.input, width: "100%", boxSizing: "border-box" }}>
+                      {[2, 3, 4, 5, 0].map((n) => <option key={n} value={n}>{n === 0 ? "No limit" : n + " shifts"}</option>)}
+                    </select>
+                    <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "4px" }}>Applies to 12hr mode (e.g. 3 = 36hrs/wk)</div>
                   </div>
                 </div>
               </div>
@@ -636,6 +678,39 @@ function NurseSchedulerPro() {
               </div>
             </div>
 
+            {/* Nurse Shift Preferences */}
+            <div style={S.card}>
+              <div style={S.cardHead}>
+                <h3 style={S.h3}>Nurse Shift Preferences</h3>
+                <div style={{ display: "flex", gap: "4px" }}>
+                  <button onClick={() => { const p = {}; for (let i = 0; i < nurseCount; i++) p[i] = "any"; setNursePrefs(p); }} style={S.btnSm("#EEF2FF", "#4338CA")}>All Any</button>
+                  <button onClick={() => { const p = {}; const half = Math.ceil(nurseCount/2); for (let i = 0; i < nurseCount; i++) p[i] = i < half ? "day" : "night"; setNursePrefs(p); }} style={S.btnSm("#FEF3C7", "#92400E")}>Split Day/Night</button>
+                </div>
+              </div>
+              <div style={S.cardBody}>
+                <div style={{ fontSize: "12px", color: "#6B7280", marginBottom: "10px" }}>
+                  <strong>Day Only:</strong> Morning, Afternoon, Day(12h) only. <strong>Night Only:</strong> Night shifts only. <strong>Any:</strong> All shifts.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "6px", maxHeight: "300px", overflowY: "auto", padding: "4px" }}>
+                  {Array.from({ length: nurseCount }, (_, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 8px", background: "#F9FAFB", borderRadius: "6px", border: "1px solid #E5E7EB" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 700, fontFamily: "monospace", minWidth: "60px" }}>{genCode(i)}</span>
+                      <select value={nursePrefs[i] || "any"} onChange={(e) => setNursePrefs({...nursePrefs, [i]: e.target.value})} style={{ fontSize: "11px", padding: "3px 6px", border: "1px solid #D1D5DB", borderRadius: "4px", background: nursePrefs[i] === "day" ? "#FEF9C3" : nursePrefs[i] === "night" ? "#EDE9FE" : "#fff" }}>
+                        <option value="any">Any Shift</option>
+                        <option value="day">Day Only</option>
+                        <option value="night">Night Only</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: "8px", display: "flex", gap: "12px", fontSize: "11px", color: "#6B7280" }}>
+                  <span>Day: {Object.values(nursePrefs).filter(v => v === "day").length}</span>
+                  <span>Night: {Object.values(nursePrefs).filter(v => v === "night").length}</span>
+                  <span>Any: {nurseCount - Object.values(nursePrefs).filter(v => v === "day" || v === "night").length}</span>
+                </div>
+              </div>
+            </div>
+
             <div style={{ textAlign: "center", padding: "8px" }}>
               <button onClick={handleGenerate} disabled={nurseCount < 3} style={{ ...S.btn("#059669", "#fff"), fontSize: "16px", padding: "14px 40px", opacity: nurseCount < 3 ? 0.5 : 1 }}>
                 {"\uD83D\uDD04"} Generate & Verify Schedule ({nurseCount} nurses, {duration} days)
@@ -645,7 +720,7 @@ function NurseSchedulerPro() {
           </>
         )}
 
-        {/* ââ VERIFICATION TAB ââ */}
+        {/* Ã¢ÂÂÃ¢ÂÂ VERIFICATION TAB Ã¢ÂÂÃ¢ÂÂ */}
         {tab === "verify" && (
           verification ? <Verification results={verification} /> : (
             <div style={{ textAlign: "center", padding: "60px", color: "#9CA3AF" }}>
@@ -655,7 +730,7 @@ function NurseSchedulerPro() {
           )
         )}
 
-        {/* ââ SCHEDULE TAB ââ */}
+        {/* Ã¢ÂÂÃ¢ÂÂ SCHEDULE TAB Ã¢ÂÂÃ¢ÂÂ */}
         {tab === "schedule" && (
           data ? (
             <>
@@ -699,9 +774,9 @@ function NurseSchedulerPro() {
                               const codes = data.schedule[fmt(d)]?.[shift.id] || [];
                               return (
                                 <td key={i} style={{ padding: "4px", textAlign: "center", background: (d.getDay() === 0 || d.getDay() === 6) ? "#FFFBEB" : "transparent", verticalAlign: "top" }}>
-                                  {codes.length > 0 ? codes.map((c, j) => (
+                                  {codes.length > 0 ? <><div style={{ fontSize: "9px", fontWeight: 700, color: "#6B7280", marginBottom: "1px" }}>{codes.length} nurse{codes.length !== 1 ? "s" : ""}</div>{codes.map((c, j) => (
                                     <div key={j} style={{ background: shift.color, color: shift.text, padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 600, marginBottom: "2px" }}>{c}</div>
-                                  )) : <span style={{ color: "#D1D5DB" }}>{"\u2014"}</span>}
+                                  ))}</> : <span style={{ color: "#D1D5DB" }}>{"\u2014"}</span>}
                                 </td>
                               );
                             })}
@@ -725,7 +800,7 @@ function NurseSchedulerPro() {
                             if (codes.length === 0) return null;
                             return (
                               <div key={shift.id} style={{ marginBottom: "8px" }}>
-                                <div style={{ fontSize: "11px", fontWeight: 700, color: "#6B7280", marginBottom: "3px" }}>{shift.icon} {shift.name}</div>
+                                <div style={{ fontSize: "11px", fontWeight: 700, color: "#6B7280", marginBottom: "3px" }}>{shift.icon} {shift.name} <span style={{ color: "#2563EB", fontWeight: 800 }}>({codes.length})</span></div>
                                 <div style={{ display: "flex", flexWrap: "wrap", gap: "3px" }}>
                                   {codes.map((c, j) => <span key={j} style={S.badge(shift.color, shift.text)}>{c}</span>)}
                                 </div>
@@ -760,7 +835,7 @@ function NurseSchedulerPro() {
           )
         )}
 
-        {/* ââ DISTRIBUTION TAB ââ */}
+        {/* Ã¢ÂÂÃ¢ÂÂ DISTRIBUTION TAB Ã¢ÂÂÃ¢ÂÂ */}
         {tab === "distribution" && data && (
           <>
             <div style={S.card}>
@@ -770,7 +845,7 @@ function NurseSchedulerPro() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                     <thead>
                       <tr style={{ borderBottom: "2px solid #E5E7EB" }}>
-                        {["Code", ...activeShifts.map((s) => s.name), "Total", "Hours", "Weekends"].map((h) => (
+                        {["Code", "Pref", ...activeShifts.map((s) => s.name), "Total", "Hours", "Weekends"].map((h) => (
                           <th key={h} style={{ padding: "8px 10px", textAlign: h === "Code" ? "left" : "center", fontWeight: 700, color: "#6B7280", fontSize: "11px", textTransform: "uppercase" }}>{h}</th>
                         ))}
                       </tr>
@@ -781,6 +856,7 @@ function NurseSchedulerPro() {
                         return (
                           <tr key={n.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                             <td style={{ padding: "6px 10px" }}><span style={S.badge("#EEF2FF", "#4338CA")}>{n.code}</span></td>
+                            <td style={{ padding: "6px 10px", textAlign: "center" }}><span style={S.badge(n.pref === "day" ? "#FEF9C3" : n.pref === "night" ? "#EDE9FE" : "#F3F4F6", n.pref === "day" ? "#854D0E" : n.pref === "night" ? "#5B21B6" : "#6B7280")}>{(n.pref || "any").charAt(0).toUpperCase() + (n.pref || "any").slice(1)}</span></td>
                             {activeShifts.map((s) => (
                               <td key={s.id} style={{ padding: "6px 10px", textAlign: "center" }}>{c[s.id] || 0}</td>
                             ))}
@@ -821,7 +897,7 @@ function NurseSchedulerPro() {
           </>
         )}
 
-        {/* ââ EXPORT TAB ââ */}
+        {/* Ã¢ÂÂÃ¢ÂÂ EXPORT TAB Ã¢ÂÂÃ¢ÂÂ */}
         {tab === "export" && (
           data ? (
             <div style={S.card}>
@@ -840,11 +916,11 @@ function NurseSchedulerPro() {
                     <p style={{ fontSize: "12px", color: "#6B7280", margin: "0 0 12px" }}>Shift counts per nurse with total hours and weekends.</p>
                     <button onClick={() => {
                       const cols = activeShifts.map(s => s.name);
-                      let csv = "Code," + cols.join(",") + ",Total,Hours,Weekends\n";
+                      let csv = "Code,Preference," + cols.join(",") + ",Total,Hours,Weekends\n";
                       data.nurses.forEach((n) => {
                         const c = data.counts[n.id] || {};
                         const vals = activeShifts.map(s => c[s.id] || 0);
-                        csv += `${n.code},${vals.join(",")},${c.total||0},${c.hours||0},${c.weekends||0}\n`;
+                        csv += `${n.code},${n.pref||'any'},${vals.join(",")},${c.total||0},${c.hours||0},${c.weekends||0}\n`;
                       });
                       dlCSV(csv, `distribution-${startDate}.csv`);
                     }} style={S.btn("#7C3AED", "#fff")}>{"\u2B07"} Download CSV</button>
